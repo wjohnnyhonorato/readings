@@ -2,24 +2,27 @@
 
 ## Contrato do projeto
 
-- Objetivo e escopo: construir o Beagle v0, um agente de AIOps que recebe um `anomaly_id`, investiga usando tools, preserva evidências estruturadas, gera um Anomaly Card padrão e produz um resumo final em linguagem natural.
-- Usuário principal: SRE ou profissional de operações investigando uma anomalia de microsserviços.
+- Objetivo e escopo: construir o Companion v0, agente de investigação do produto Beagle, capaz de receber um `anomaly_id`, usar tools, preservar evidências estruturadas, gerar um Anomaly Card padrão e produzir um resumo final em linguagem natural.
+- Usuário principal: SRE ou profissional de operações investigando uma anomalia.
 - Entrega esperada: fluxo local executável de ponta a ponta com LangGraph, inicialmente usando `get_anomaly_context` e `get_rca`.
 - Invariantes:
   - a LLM não inventa evidências;
   - tool outputs são a fonte dos fatos operacionais;
-  - o Anomaly Card possui schema explícito e é montado deterministicamente;
+  - o Anomaly Card possui schema explícito e é construído deterministicamente;
   - o resumo final usa somente informações presentes no card/evidências;
-  - candidato causal não pode ser apresentado como causa confirmada sem regra ou evidência explícita de confirmação;
+  - candidato causal não pode ser apresentado como causa confirmada sem evidência explícita;
   - todas as tools do v0 são read-only;
-  - o estado relevante do agente deve ser explícito e não existir somente no histórico textual.
-- Base técnica: Python, `uv`, LangGraph, LangChain Core, Pydantic e pytest.
-- Arquitetura: código reutilizável em `src/beagle`, organizado por responsabilidade; tools em `src/beagle/tools`; tool registry central; LangGraph em `graph.py`; schemas em `models.py`; estado em `state.py`; construção do card em `card.py`; configuração da LLM isolada em `llm.py`.
+  - o estado relevante do agente deve ser explícito;
+  - chamadas à LLM devem utilizar a Iara;
+  - a PoC existente em `notebooks/poc_iara.ipynb` é a referência inicial para a integração com a Iara.
+- Base técnica: Python, `uv`, LangGraph, Pydantic, pytest e Iara para acesso à LLM.
+- Arquitetura: código reutilizável em `src/companion`, organizado por responsabilidade; tools em `src/companion/tools`; registry central; LangGraph em `graph.py`; schemas em `models.py`; estado em `state.py`; construção do card em `card.py`; integração com Iara isolada em `llm.py`.
 - Ponto de entrada: `main.py`; deve permanecer pequeno e sem lógica de domínio.
 - Nunca fazer:
   - implementar multi-agent no v0;
   - adicionar RAG, banco vetorial, MCP, interface web ou cloud deploy sem tarefa explícita;
-  - acoplar o domínio diretamente a um SDK específico de LLM;
+  - introduzir outro provider ou SDK de LLM sem solicitação explícita;
+  - espalhar detalhes da Iara por módulos de domínio;
   - colocar regras importantes somente no prompt;
   - criar abstrações antecipadas para necessidades futuras;
   - transformar score de RCA em probabilidade sem que o contrato da tool declare isso;
@@ -27,7 +30,7 @@
 
 ## Arquitetura estável do v0
 
-Fluxo esperado:
+Primeira fatia vertical:
 
 ```text
 START
@@ -36,23 +39,26 @@ initialize_case
   ↓
 investigator
   ↓
-tool call?
-  ├── sim → tools → collect_evidence → investigator
-  └── não → verify_evidence
-                ↓
-         evidência suficiente?
-          ├── não → investigator
-          └── sim → build_card → summarize → END
+tools
+  ↓
+collect_evidence
+  ↓
+build_card
+  ↓
+summarize_with_iara
+  ↓
+END
 ```
+
+Depois que esse fluxo estiver funcionando, verifier determinístico e investigação iterativa podem ser adicionados em tarefas separadas.
 
 Responsabilidades:
 
-- `investigator`: LLM decide a próxima ação usando as tools disponíveis.
+- `investigator`: usa a LLM via Iara para decidir ações quando necessário.
 - `tools`: executa somente tools registradas.
-- `collect_evidence`: converte tool results em estado estruturado.
-- `verify_evidence`: valida de forma determinística se o fluxo pode concluir.
+- `collect_evidence`: converte retornos das tools em estado estruturado.
 - `build_card`: constrói o Anomaly Card sem usar LLM.
-- `summarize`: gera uma síntese curta usando somente o card produzido.
+- `summarize_with_iara`: recebe o card estruturado e gera a síntese final usando a Iara.
 
 Tools iniciais:
 
@@ -63,11 +69,26 @@ get_rca(anomaly_id)
 
 Novas tools devem ser adicionadas ao registry sem exigir redesenho do fluxo principal.
 
+## Iara
+
+- A Iara é o caminho oficial de acesso à LLM neste projeto.
+- Use `notebooks/poc_iara.ipynb` como referência técnica para a integração existente.
+- Não copie o notebook inteiro para produção.
+- Extraia somente a configuração e chamada necessárias.
+- Centralize a integração reutilizável em `src/companion/llm.py` ou módulo equivalente.
+- Os demais módulos não devem depender dos detalhes internos da Iara.
+- Preserve autenticação, configuração e padrões corporativos existentes.
+- Não altere a forma de acesso à Iara além do necessário para atender a tarefa atual.
+
 ## Estrutura esperada
 
 ```text
 main.py
-src/beagle/
+
+notebooks/
+└── poc_iara.ipynb
+
+src/companion/
 ├── graph.py
 ├── state.py
 ├── models.py
@@ -78,28 +99,33 @@ src/beagle/
     ├── anomaly.py
     ├── rca.py
     └── registry.py
+
 tests/
 ```
 
-Mantenha a estrutura pequena. Não crie novos módulos sem responsabilidade clara.
+Mantenha a estrutura pequena.
+
+Não crie novos módulos sem responsabilidade clara.
 
 ## Contexto por tarefa
 
 - Compreenda somente o contexto necessário e suficiente para executar a tarefa.
-- Examine `CURRENT_TASK.md`, os módulos relacionados e os testes diretamente afetados.
-- Amplie a leitura somente quando o alcance ou risco da mudança justificar.
+- Leia `CURRENT_TASK.md`.
+- Consulte `README.md` quando a tarefa tocar no contrato funcional ou arquitetural.
+- Examine somente código, notebook, configurações e testes relacionados.
+- Amplie a leitura conforme alcance e risco.
 - Não leia ou refatore o repositório inteiro sem necessidade.
-- `README.md` define a direção funcional e arquitetural estável do Beagle; consulte as seções relacionadas quando a tarefa tocar nesses contratos.
+- `FUTURE_TASKS.md` é memória do humano e não deve ser carregado ou executado por padrão.
 
 ## Antes de implementar
 
 - Leia `CURRENT_TASK.md`.
-- Localize o código, contratos, schemas e testes relacionados.
+- Localize código, contratos, schemas, notebooks e testes relacionados.
 - Se não houver tarefa definida, solicite uma ao humano.
 - Pergunte somente sobre ambiguidades que possam alterar comportamento, arquitetura, risco ou escopo.
 - Confirme que a tarefa possui um comportamento principal observável.
-- Se a tarefa exigir várias entregas independentes ou um diff difícil de revisar, proponha divisão.
-- `FUTURE_TASKS.md` é memória do humano, não escopo aprovado. Não execute itens dele sem solicitação.
+- Se exigir entregas independentes ou um diff difícil de revisar, proponha divisão.
+- Não implemente itens de `FUTURE_TASKS.md` sem que tenham sido selecionados e movidos para `CURRENT_TASK.md`.
 
 ## Implementação
 
@@ -113,24 +139,24 @@ Mantenha a estrutura pequena. Não crie novos módulos sem responsabilidade clar
 - Use modelos Pydantic quando houver contrato de dados relevante.
 - Tools devem possuir entrada e saída explícitas.
 - Falhas de integração devem resultar em erro tratável, não em dados inventados.
-- Prompts devem orientar raciocínio e linguagem; regras de integridade devem permanecer no código sempre que possível.
+- Prompts devem orientar raciocínio e linguagem; regras de integridade devem permanecer no código quando possível.
 - Para adicionar uma tool, prefira implementar o contrato e registrá-la em `tools/registry.py`, evitando branches específicos no grafo.
 - Antes de pausar ou encerrar sem concluir, atualize **Checkpoint** no `CURRENT_TASK.md`.
 - Se a mudança crescer além de um diff pequeno e revisável, pare em estado seguro e proponha divisão.
 
 ## Regras para LLM e tools
 
-- A LLM pode decidir qual tool chamar e integrar evidências.
+- A LLM pode selecionar tools e integrar evidências.
 - A LLM não pode fabricar retorno de tool.
-- Não envie traces ou payloads grandes para o modelo quando um contexto estruturado e compacto for suficiente.
+- Não envie traces ou payloads grandes quando um contexto estruturado e compacto for suficiente.
 - Preserve no estado os fatos necessários para construir o card.
-- Tool descriptions devem ser curtas e suficientemente distintas para permitir escolha correta.
-- Não adicione uma nova tool somente para demonstrar capability; adicione quando resolver um caso real.
-- O provider LLM deve ser configurado em `llm.py`; os demais módulos não devem importar diretamente o SDK do provider.
+- Tool descriptions devem ser curtas e distintas.
+- Não adicione uma nova tool somente para demonstrar capability.
+- Toda chamada à LLM deve passar pela integração central da Iara.
 
 ## Regras para o Anomaly Card
 
-O card deve ser um modelo tipado e conter apenas informações derivadas das evidências disponíveis.
+O card deve ser um modelo tipado.
 
 Campos mínimos conceituais:
 
@@ -145,21 +171,21 @@ limitations
 
 - O card é construído deterministicamente.
 - O resumo textual não altera os fatos do card.
-- Se RCA retornar candidatos, use linguagem de candidato/hipótese.
-- Só use `confirmed` se houver evidência ou regra explícita que suporte essa classificação.
-- Campos desconhecidos devem permanecer ausentes, nulos ou explicitamente indisponíveis; nunca inferidos pela LLM sem base.
+- Se RCA retornar candidatos, use linguagem de candidato ou hipótese.
+- Só use `confirmed` quando existir evidência ou regra explícita que suporte essa classificação.
+- Campos desconhecidos devem permanecer ausentes, nulos ou explicitamente indisponíveis.
 
 ## Context engineering
 
 - Forneça à LLM somente o contexto necessário para a decisão atual.
 - Prefira tool outputs compactos e estruturados.
 - Não envie traces completos para a LLM por padrão.
-- Preserve identificadores, scores, limitações e fatos importantes sem resumos que alterem significado.
-- O node `summarize` deve receber o card final, e não todo o histórico bruto, salvo necessidade comprovada.
+- Preserve identificadores, scores, limitações e fatos importantes.
+- O resumo final deve receber preferencialmente o Anomaly Card, e não todo o histórico bruto.
 
 ## Observabilidade
 
-No v0, logging simples e estruturado é suficiente.
+No v0, logging simples é suficiente.
 
 Deve ser possível identificar:
 
@@ -167,7 +193,6 @@ Deve ser possível identificar:
 anomaly_id
 tools chamadas
 sucesso ou erro das tools
-resultado do verifier
 card gerado
 resumo final
 ```
@@ -179,14 +204,14 @@ Não introduza plataforma de tracing, banco ou infraestrutura adicional sem tare
 - Siga **Como validar** do `CURRENT_TASK.md`.
 - Use a menor evidência confiável para a mudança.
 - Teste comportamento determinístico com pytest.
-- Para comportamento da LLM, prefira poucos casos fixture e assertions sobre invariantes, não comparação literal de texto.
-- Validações fundamentais do v0:
+- Para comportamento da LLM, use poucos casos fixture e assertions sobre invariantes, não comparação literal de texto.
+- Validações fundamentais:
   - tool retorna schema válido;
   - erro de tool é preservado;
   - card possui campos mínimos;
   - candidato principal do card existe no retorno do RCA;
-  - fluxo não conclui quando falta evidência obrigatória;
   - resumo não inventa serviço inexistente nas evidências;
+  - resumo não transforma score em probabilidade;
   - resumo não declara causa confirmada quando o card contém somente candidato.
 - Não declare validação executada se ela não ocorreu.
 - Validação bem-sucedida não substitui aprovação humana.
@@ -215,7 +240,7 @@ Não introduza plataforma de tracing, banco ou infraestrutura adicional sem tare
 uv sync
 ```
 
-- Executar Beagle:
+- Executar Companion:
 
 ```bash
 uv run python main.py ARGOS-123
