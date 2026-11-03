@@ -1,8 +1,9 @@
 # Como funciona um ambiente mainframe
 
 **Data:** 27/10/2026  
+**Revisão pontual:** 03/11/2026  
 **Objetivo:** entender os elementos da tecnologia mainframe e suas relações para interpretar inventários, mapear negócios e estudar modernização.  
-**Leitura complementar:** [Estudo de modernização de mainframe](relatorio_estudo.md).
+**Leitura complementar:** [Pontos críticos da modernização de mainframe para AWS](modernization_critical_points.md).
 
 Este guia usa como referência um ambiente bancário tradicional com IBM Z, z/OS, COBOL, CICS e Db2. Existem outras configurações. Os exemplos de programas, transações e arquitetura PIX são fictícios e não descrevem a implementação do banco.
 
@@ -148,7 +149,7 @@ Assim, **migrar uma aplicação não significa que toda a região possa ser desl
 
 ## 5. O que é batch? Como entram job, step e JCL?
 
-**Batch é processamento sem interação contínua com uma pessoa para solicitar cada operação individual.** Frequentemente trabalha com conjuntos de registros.
+**Batch é a execução de trabalhos submetidos como jobs, sem interação contínua com o usuário durante o processamento.** Frequentemente trabalha com conjuntos de registros. Uma transação online também pode ser acionada por outro sistema; a ausência de uma pessoa não basta para classificar algo como batch.
 
 Exemplos bancários: calcular encargos, consolidar movimentos, gerar extratos e executar conciliações.
 
@@ -271,7 +272,7 @@ A tecnologia pode mudar; o comportamento necessário à operação precisa ter u
 | APIs, MQ e arquivos | Contratos e comunicação com consumidores e produtores. |
 | Plataforma | Segurança, disponibilidade, observabilidade e recuperação necessárias. |
 
-As abordagens variam. Algumas preservam programas e comportamentos por meio de ambientes compatíveis; outras transformam código e arquitetura. Portanto, “ir para cloud” não significa automaticamente eliminar COBOL, batch ou todos os mecanismos equivalentes a CICS e IMS.
+As abordagens variam. Algumas preservam programas e comportamentos por meio de ambientes compatíveis; outras transformam código e arquitetura. Portanto, “ir para cloud” não significa automaticamente eliminar COBOL, batch ou todos os mecanismos equivalentes a CICS e IMS. Esses mecanismos dependem da solução escolhida: converter código não garante que utilitários, agendador e controles de acesso já tenham substitutos [A9].
 
 CICS e IMS TM são serviços de execução. **JCL é um artefato de definição de trabalho, não um serviço que se desliga.**
 
@@ -304,9 +305,9 @@ Para cada medida de MIPS, confirme definição, método de atribuição ao siste
 
 Este guia não escolhe critérios de priorização nem algoritmos. Ele fornece vocabulário e relações para interpretar a base quando os dados estiverem disponíveis.
 
-## 11. Referências técnicas
+## 11. Referências
 
-As definições se apoiam em documentação oficial; os exemplos e diagramas são sínteses didáticas.
+As definições se apoiam em documentação oficial; os exemplos e diagramas são sínteses didáticas. A revisão acadêmica preservou os diagramas e as distinções entre programas, transações, jobs e dados.
 
 1. **IBM — Mainframe workloads: Batch and online transaction processing.** [Documento](https://www.ibm.com/docs/en/zos-basic-skills?topic=today-mainframe-workloads-batch-online-transaction-processing).
 2. **IBM — CICS programs, transactions and tasks.** [Documento](https://www.ibm.com/docs/en/cics-ts/5.6.0?topic=applications-cics-programs-transactions-tasks).
@@ -317,3 +318,8 @@ As definições se apoiam em documentação oficial; os exemplos e diagramas sã
 7. **IBM — Sharing data in CICS applications.** Recursos e dados compartilhados. [Documento](https://www.ibm.com/docs/en/cics-ts/6.x?topic=applications-sharing-data-in-cics).
 
 Documentação web sujeita a atualização.
+
+**Conferência acadêmica da modernização:** identificadores iguais aos do [estudo](modernization_critical_points.md).
+
+- **[A9]** De Marco, Iancu e Asinofsky (2018), *COBOL to Java and Newspapers Still Get Delivered*. [Texto completo](https://arxiv.org/pdf/1808.03724), §II–IV. Caso Mainframe → Linux privado: conversão também exigiu tratar runtime, utilitários, agendador e segurança.
+- **[A12]** Kazanavičius, Mažeika e Kalibatienė (2022), *An Approach to Migrate a Monolith Database into Multi-Model Polyglot Persistence Based on Microservice Architecture: A Case Study for Mainframe Database*. [Texto completo](https://www.mdpi.com/2076-3417/12/12/6189), §4.1.6/§5.6. A retirada da base exige tratar seus consumidores; não equivale a desligar toda a aplicação Mainframe.
